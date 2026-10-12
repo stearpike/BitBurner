@@ -1,183 +1,173 @@
-/** u/param {NS} ns **/
+/** @param {NS} ns **/
 export async function main(ns) {
 
-	/**
- * VARS
- */
-let serversList = ['home'];
-let serversNotHacket = [];
-let doubleLine = "\n ================================================================ \n";
-let singleLine = "\n ---------------------------------------------------------------- \n";
+    // MODE ARG: "money" or "hack"
+    const mode = ns.args[0] || "money";   // default = money
 
-/**
- * Print string on terminal
- */
-let printThis = (stringToPrint) => {
-	ns.tprint(stringToPrint);
-};
+    let serversList = ['home'];
+    let serversNotHacket = [];
+    let doubleLine = "\n ================================================================ \n";
+    let singleLine = "\n ---------------------------------------------------------------- \n";
 
-/** Scan network */
-async function netSpider(serversList) {
-	for (let i = 0; i < serversList.length; i++) {
-		let thisScan = ns.scan(serversList[i]);
-		for (let j = 0; j < thisScan.length; j++) {
-			if (serversList.indexOf(thisScan[j]) === -1) {
-				serversList.push(thisScan[j]);
-			}
-		}
-	}
-	return serversList;
+    let printThis = (stringToPrint) => ns.tprint(stringToPrint);
+
+    /** Scan network */
+    async function netSpider(serversList) {
+        for (let i = 0; i < serversList.length; i++) {
+            let thisScan = ns.scan(serversList[i]);
+            for (let j = 0; j < thisScan.length; j++) {
+
+                if (thisScan[j].startsWith("hacknet-")) continue;
+
+                if (!serversList.includes(thisScan[j])) {
+                    serversList.push(thisScan[j]);
+                }
+            }
+        }
+        return serversList;
+    }
+
+    /** Copy hacking script to target */
+    async function copyToTarget(fileToCopy, serverName) {
+        if (ns.fileExists(fileToCopy, serverName)) ns.rm(fileToCopy, serverName);
+        await ns.scp(fileToCopy, serverName, 'home');
+    }
+
+    function canBeHacked(serverName) {
+        return ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(serverName);
+    }
+
+    async function lockSmith(serverName) {
+        if (ns.fileExists("BruteSSH.exe")) await ns.brutessh(serverName);
+        if (ns.fileExists("FTPCrack.exe")) await ns.ftpcrack(serverName);
+        if (ns.fileExists("relaySMTP.exe")) await ns.relaysmtp(serverName);
+        if (ns.fileExists("HTTPWorm.exe")) await ns.httpworm(serverName);
+        if (ns.fileExists("SQLInject.exe")) await ns.sqlinject(serverName);
+    }
+
+    function howManyThreads(serverName, scriptName) {
+        return Math.floor(
+            (ns.getServerMaxRam(serverName) - ns.getServerUsedRam(serverName)) /
+            ns.getScriptRam(scriptName)
+        );
+    }
+
+    function addToNotHackedList(serverToBeadded) {
+        serversNotHacket.push(serverToBeadded);
+    }
+
+    function checkHack(serverName) {
+        return ns.hasRootAccess(serverName);
+    }
+
+    async function gainRootAccess(serverName) {
+        await lockSmith(serverName);
+        ns.nuke(serverName);
+    }
+
+    /** MODE-BASED SCORING */
+    function scoreServer(host) {
+        const s = ns.getServer(host);
+        const p = ns.getPlayer();
+
+        if (!s.hasAdminRights) return 0;
+        if (s.moneyMax === 0) return 0;
+
+        const chance = ns.formulas.hacking.hackChance(s, p);
+        const percent = ns.formulas.hacking.hackPercent(s, p);
+        const time = ns.formulas.hacking.hackTime(s, p);
+
+        if (mode === "money") {
+            return s.moneyMax * percent * chance / time;
+        }
+
+        if (mode === "hack") {
+            return percent / time;
+        }
+
+        return 0;
+    }
+
+    function pickBestServer(servers) {
+        let best = "n00dles";
+        let bestScore = 0;
+
+        for (const host of servers) {
+            const score = scoreServer(host);
+            if (score > bestScore) {
+                bestScore = score;
+                best = host;
+            }
+        }
+        return best;
+    }
+
+    /** Kill old hack.js scripts */
+  function killOldScripts(serversList, scriptName) {
+      for (const server of serversList) {
+          const procs = ns.ps(server);
+          for (const proc of procs) {
+              if (proc.filename === scriptName) {
+                ns.kill(proc.pid);
+            }
+        }
+    }
 }
 
-/**
- * Copy hacking script to target
- */
-async function copyToTarget(fileToCopy, serverName) {
-	if(ns.fileExists(fileToCopy, serverName)){
-		ns.rm(fileToCopy, serverName);
-	}
-	await ns.scp(fileToCopy, serverName, 'home');
-	if(ns.fileExists(fileToCopy, serverName)){
-		printThis("File " + fileToCopy + " copied to " + serverName + singleLine);
-		await ns.sleep(100);
-	}
-}
 
-/**
- * Checks if player has required Hacking level to hack server
- */
-function canBeHacked(serverName) {
-	return ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(serverName);
-}
+    /** Gain root + copy hack.js */
+    async function doorHammer(serversList, runThisScript) {
+        for (const currentServer of serversList) {
 
-/**
- * Open server ports
- */
-async function lockSmith(serverName) {
-	if (ns.fileExists("BruteSSH.exe")) {
-		await ns.brutessh(serverName);
-		printThis("Executed BruteSSH.exe on " + serverName);
-		await ns.sleep(1000);
-	}
-	if (ns.fileExists("FTPCrack.exe")) {
-		await ns.ftpcrack(serverName);
-		printThis("Executed FTPCrack.exe on " + serverName);
-		await ns.sleep(1000);
-	}
-	if (ns.fileExists("relaySMTP.exe")) {
-		printThis("Executed relaySMTP.exe on " + serverName);
-		await ns.relaysmtp(serverName);
-		await ns.sleep(1000);
-	}
-	if (ns.fileExists("HTTPWorm.exe")) {
-		printThis("Executed HTTPWorm.exe on " + serverName);
-		await ns.httpworm(serverName);
-		await ns.sleep(1000);
-	}
-	if (ns.fileExists("SQLInject.exe")) {
-		printThis("Executed SQLInject.exe on " + serverName);
-		await ns.sqlinject(serverName);
-		await ns.sleep(1000);
-	}
-}
+            if (currentServer === 'home') continue;
 
-/**
- * Returns the max number of thread that a script can use on a server
- */
-function howManyThreads(serverName, scriptName) {
-	return Math.floor(
-		parseInt(
-			(ns.getServerMaxRam(serverName) - ns.getServerUsedRam(serverName)) / ns.getScriptRam(scriptName)
-		)
-	);
-}
+            if (!canBeHacked(currentServer)) {
+                addToNotHackedList(currentServer);
+                continue;
+            }
 
-/**
- * Obtains root access of a target list
- */
-async function doorHammer(serversList, runThisScript) {
-	for (const currentServer of serversList) {
+            if (!checkHack(currentServer)) {
+                await gainRootAccess(currentServer);
+            }
 
-		if (currentServer == 'home' || hackedAndRunning(currentServer, runThisScript)) {
-			printThis("Server " + currentServer + " was skipped." + singleLine);
-			continue;
-		}
+            if (!checkHack(currentServer)) {
+                addToNotHackedList(currentServer);
+                continue;
+            }
 
-		if (!canBeHacked(currentServer)) {
-			printThis("It was not possible to hack " + currentServer + ". The level required is: " + ns.getServerRequiredHackingLevel(currentServer) + singleLine);
-			addToNotHackedList(currentServer);
-			continue;
-		}
+            await copyToTarget(runThisScript, currentServer);
+        }
+    }
 
-		var threadCount = howManyThreads(currentServer, runThisScript);
+    /** Deploy hack.js with new args */
+    async function deployHackScripts(serversList, runThisScript, bestTarget) {
+        for (const currentServer of serversList) {
 
-		if (isNaN(threadCount) || threadCount == 0) {
-			printThis("Thread count invalid on " + currentServer);
-			addToNotHackedList(currentServer);
-			continue;
-		}
+            if (currentServer === 'home') continue;
 
-		// Only hack the server if there is no current root access
-		if (!checkHack(currentServer)) {
-			await gainRootAccess(currentServer);
-		}
+            const threadCount = howManyThreads(currentServer, runThisScript);
+            if (threadCount <= 0) continue;
 
-		if (checkHack(currentServer)) {
-			printThis("Server " + currentServer + " hacked with success!" + singleLine);
-		} else {
-			printThis("It was not possible to hack " + currentServer + singleLine);
-			addToNotHackedList(currentServer);
-			continue;
-		}
+            ns.exec(runThisScript, currentServer, threadCount, bestTarget);
+        }
+    }
 
-		printThis(doubleLine + "Copying hacking script to " + currentServer);
-		await copyToTarget(runThisScript, currentServer);
+    /** Correct order */
+    serversList = await netSpider(serversList);
 
-		printThis("Initiating  " + runThisScript + " on " + currentServer + " with " + threadCount + " threads." + singleLine);
+    printThis(doubleLine + "MODE: " + mode + doubleLine);
 
-		ns.exec(runThisScript, currentServer, threadCount);
+    printThis("Gaining root access...");
+    await doorHammer(serversList, "hack.js");
 
-		if (ns.scriptRunning(runThisScript, currentServer)) {
-			printThis("The script was initiated successfully." + singleLine);
-		} else {
-			printThis("The script initialization failed." + singleLine);
-		}
+    const bestTarget = pickBestServer(serversList);
+    printThis("Best target (" + mode + " mode): " + bestTarget + doubleLine);
 
-		await ns.sleep(1000);
-	}
-}
+    printThis("Stopping old hack.js scripts...");
+    killOldScripts(serversList, "hack.js");
 
-async function gainRootAccess(serverName) {
+    printThis("Deploying hack.js...");
+    await deployHackScripts(serversList, "hack.js", bestTarget);
 
-	await lockSmith(serverName);
-
-	printThis("Nuking " + serverName);
-	ns.nuke(serverName);
-	await ns.sleep(2000);
-}
-
-/**
- * Check if a server is already hacked and has a script running
- */
-function hackedAndRunning(serverName, scriptName) {
-	return ns.scriptRunning(scriptName, serverName) && checkHack(serverName);
-}
-
-/**
- * Adds a server name to the unsuccesfull hack list
- */
-function addToNotHackedList(serverToBeadded) {
-	serversNotHacket.push(serverToBeadded);
-}
-
-function checkHack(serverName) {
-	return ns.hasRootAccess(serverName);
-}
-
-serversList = await netSpider(serversList);
-
-printThis(doubleLine + "Found servers: " + serversList + doubleLine);
-printThis(doubleLine + "Trying to gain access to targets...");
-await doorHammer(serversList, "hack.js");
-printThis("These servers were not hacked: " + serversNotHacket + doubleLine);
+    printThis("These servers were not hacked: " + serversNotHacket + doubleLine);
 }
